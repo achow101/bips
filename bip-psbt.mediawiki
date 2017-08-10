@@ -236,6 +236,15 @@ the PSBT</ref>. Types can be skipped when they are unnecessary.
 For example, if an input is a witness input, then it should not have a Non-Witness
 UTXO key-value pair.
 
+If the signer encounters key-value pairs that it does not understand, it must
+pass those key-value pairs through when re-serializing the transaction.
+
+===Extensibility
+
+The Partially Signed Transaction format can be extended in the future to add additional fields.
+New type values can be added and still maintain backwards compatibility as those new
+types will be ignored and passed-through by signers which do not know about them.
+
 ===Compatibility===
 
 This transaction format is designed so that it is unable to be properly unserialized
