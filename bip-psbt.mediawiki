@@ -241,8 +241,8 @@ pass those key-value pairs through when re-serializing the transaction.
 
 ===Extensibility
 
-The Partially Signed Transaction format can be extended in the future to add additional fields.
-New type values can be added and still maintain backwards compatibility as those new
+The Partially Signed Transaction format can be extended in the future by adding
+new types for key-value pairs. Backwards compatibilty will still be maintained as those new
 types will be ignored and passed-through by signers which do not know about them.
 
 ===Compatibility===
@@ -250,6 +250,16 @@ types will be ignored and passed-through by signers which do not know about them
 This transaction format is designed so that it is unable to be properly unserialized
 by normal transaction unserializers. Likewise, a normal transaction will not be
 able to be unserialized by an unserializer for the PSBT format.
+
+==Examples==
+
+===Manual CoinJoin Workflow===
+
+<img src="bip-psbt/coinjoin-workflow.png" align="middle"></img>
+
+===2-of-3 Multisig Workflow===
+
+<img src="bip-psbt/multisig-workflow.png" align="middle"></img>
 
 ==Rationale==
 
