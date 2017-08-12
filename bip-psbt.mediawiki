@@ -1,7 +1,7 @@
 <pre>
   BIP: PSBT
   Layer: Applications
-  Title: Partially Signed Bitcoin Transaction Format
+  Title: Partially Signed Bitcoin Transaction (PSBT) Format
   Author: Andrew Chow <achow101@gmail.com>
   Comments-Summary: No comments yet.
   Comments-URI: https://github.com/bitcoin/bips/wiki/Comments:BIP-PSBT
@@ -30,18 +30,22 @@ This BIP is licensed under the 2-clause BSD license.
 Creating unsigned or partially signed transactions to be passed around to multiple
 signers is currently implementation dependent, making it hard for people who use
 different wallet software from being able to easily do so. One of the goals of this
-document is to create a standard format that can be used between clients to allow
-people to pass around the same transaction to sign and combine their signatures.
+document is to create a standard and extensible format that can be used between clients to allow
+people to pass around the same transaction to sign and combine their signatures. The
+format is also designed to be easily extended for future use which is harder to do
+with existing transaction formats.
 
 Signing transactions also requires users to have access to the blockchain in order
 to find the UTXOs being spent so that the transaction can be signed. This transaction
 format will allow offline signers such as air-gapped wallets and hardware wallets
-to be able to sign transactions without access to the blockchain.
+to be able to sign transactions without access to information about the coins being spent.
 
 ==Specification==
 
-The transaction format uses a key-value map. Each key-value pair must be unique within
-its scope, duplicates are not allowed. The key-value pair format is as follows:
+The Partially Signed Bitcoin Transaction (PSBT) format consists of key-value maps.
+Each key-value pair must be unique within its scope; duplicates are not allowed.
+Each map consists of a sequence of records, terminated by a `0x00` byte. The format
+of a record is as follows:
 
 {| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
 !Name
@@ -65,7 +69,7 @@ its scope, duplicates are not allowed. The key-value pair format is as follows:
 | The Value itself
 |}
 
-The first byte of each key specifies the type of the key-value pair. Smoe types are
+The first byte of each key specifies the type of the key-value pair. Some types are
 for global fields and other fields are for each input. The only required type in a
 PSBT is the transaction type, as defined below. The currently defined global types are as follows:
 
@@ -85,7 +89,10 @@ must be in the witness serialization format as defined in BIP 144. A PSBT must h
 a transaction, otherwise it is invalid.
 |-
 | <tt>0x01</tt>
-| Redeem Script
+| Redeem Script<ref>'''Why are redeem scripts and witness scripts global''' Redeem
+  scripts and witness scripts are global data to avoid duplication. Instead of specifying
+  a redeems script and witness script multiple times in inputs that need those scripts,
+  they are specified once in the global data.</ref>
 | The hash160 of the redeem script
 | A redeem script that will be needed to sign a Pay-To-Script-Hash input.
 |-
@@ -138,10 +145,11 @@ The transaction format is specified as follows:
 | Magic Bytes
 | int32_t
 | <tt>0x70736274</tt>
-| Magic bytes which are ASCII for psbt <ref>'''Why use 4 bytes for psbt?''' The
+| Magic bytes which are ASCII for psbt. <ref>'''Why use 4 bytes for psbt?''' The
 transaction format needed to start with a 5 byte header which uniquely identifies
 it. The first bytes were chosen to be the ASCII for psbt because that stands for
-Partially Signed Bitcoin Transaction. </ref>
+Partially Signed Bitcoin Transaction. </ref> This integer should be serialized
+in most significant byte order.
 |-
 | 1
 | separator
@@ -163,7 +171,7 @@ in the non-PSBT format will be able to be unserialized by a PSBT unserializer.</
 | separator
 | char
 | <tt>0x00</tt>
-| Must be <tt>0x00</tt> <ref>'''Why is the separator here <tt>0x00</>> instead of <tt>0xff</tt>?'''
+| Must be <tt>0x00</tt> <ref>'''Why is the separator here <tt>0x00</tt> instead of <tt>0xff</tt>?'''
 The separator here is used to distinguish between each chunk of data. A separator of 0x00 would mean that
 the unserializer can read it as a key length of 0, which would never occur with actual keys. It can thus
 be used as a separator and allow for easier unserializer implementation.</ref>
@@ -220,15 +228,12 @@ into one entity, but each role has a specific set of things that it must be able
 
 ===Transaction Creator===
 
-The transaction creator must be able to accept a network serialized transaction and produce
-a PSBT from that transaction. For all scriptSigs which are not finalized, it must make the
-scriptSig empty and make the input fields. If it is able to, it should also look for any
-required redeemScripts and witnesScripts and add those to the global data section of the
-PSBT. The transaction creator should also fill in UTXOs that it knows about.
-
-===Transaction Updater===
-
-The transaction updater must accept a PSBT and update it with any UTXOs that it knows about.
+The transaction creator must be able to accept either a network serialized transaction or a PSBT
+and either produce a PSBT or update the provided PSBT. For all scriptSigs which are not finalized, it must make the
+scriptSig empty and fill in the input fields with information from the scriptSig, if any.
+If it is able to, it should also look for any required redeemScripts and witnesScripts
+and add those to the global data section of the PSBT. The transaction creator
+should also fill in UTXOs that it knows about.
 
 ===Transaction Signer===
 
@@ -237,6 +242,10 @@ to produce signatures for the inputs that it can sign for. The signer should not
 access to the UTXO set as all necessary information is provided in the PSBT itself.
 Any and all signatures created should be added as a Partial Signature key-value pair
 to the input for which it corresponds to.
+
+The signer should also be able to compute the amount being spent, the amount being
+transacted, the inputs being spent, the transaction fee, and the addresses being
+paid. It can be interactive and ask the user for confirmation of all of the above things.
 
 ===Transaction Combiner===
 
@@ -253,6 +262,7 @@ input. If an input contains enough signatures for that input to have a complete 
 signatures, the finalizer should take those signatures, any necessary redeemScripts
 and witnessScripts, and build the complete scriptSig. The scriptSig should then be
 included in the transaction and the input should have all key-value pairs removed.
+The finalizer may remove any global data which is not needed for any other inputs.
 
 ===Transaction Broadcaster===
 The transaction broadcaster takes a finalized PSBT. It takes the transaction out of the
@@ -279,6 +289,10 @@ able to be unserialized by an unserializer for the PSBT format.
 ===2-of-3 Multisig Workflow===
 
 <img src="bip-psbt/multisig-workflow.png" align="middle"></img>
+
+==Test Vector==
+
+TDB
 
 ==Rationale==
 
