@@ -152,22 +152,10 @@ as a normal transaction. Likewise, since the 5 byte header is fixed, no transact
 in the non-PSBT format will be able to be unserialized by a PSBT unserializer.</ref>
 |-
 | 1+
-| Transaction
-| key-value pair
-| varies
-| A transaction type key-value pair. This field must exist.
-|-
-| 1+
-| Redeem Scripts
+| Global data
 | Array of key-value pairs
 | varies
-| All of the redeem script type key-value pairs
-|-
-| 1+
-| Witness Scripts
-| Array of key-value pairs
-| varies
-| All of the witness script type key-value pairs
+| The key-value pairs for all global data.
 |-
 | 1
 | separator
@@ -195,28 +183,10 @@ Each Input item is specified as follows:
 !Description
 |-
 | 1+
-| Non-Witness UTXO
-| key-value pair
-| varies
-| A Non-Witness UTXO type key-value pair
-|-
-| 1+
-| Witness UTXO
-| key-value pair
-| varies
-| A Witness UTXO type key-value pair
-|-
-| 1+
-| Partial Signatures
+| Input specific data
 | Array of key-value pairs
 | varies
-| All of the partial signature type key-value pairs for this input
-|-
-| 1+
-| Public Key derivation paths
-| Array of key-value pairs
-| varies
-| All of the BIP 32 Derivation Path type key-value pairs for this input
+| The key-value pairs for this input.
 |-
 | 1
 | separator
