@@ -40,8 +40,8 @@ to be able to sign transactions without access to the blockchain.
 
 ==Specification==
 
-The transaction format uses a key-value map. Each key-value pair must be unique, duplicates
-are not allowed. The key-value pair format is as follows:
+The transaction format uses a key-value map. Each key-value pair must be unique within
+its scope, duplicates are not allowed. The key-value pair format is as follows:
 
 {| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
 !Name
@@ -104,22 +104,22 @@ table-layout: fixed;"
 !Key Data
 !Value Data
 |-
-| <tt>0x03</tt>
+| <tt>0x00</tt>
 | Non-Witness UTXO
 | None. The key must only contain the 1 byte type.
 | The transaction in network serialization format the current input spends from.
 |-
-| <tt>0x04</tt>
+| <tt>0x01</tt>
 | Witness UTXO
 | None. The key must only contain the 1 byte type.
 | The entire transaction output in network serialization which the current input spends from.
 |-
-| <tt>0x05</tt>
+| <tt>0x02</tt>
 | Partial Signature
 | The public key which corresponds to this signature.
 | The signature as would be pushed to the stack from a scriptSig or witness.
 |-
-| <tt>0x06</tt>
+| <tt>0x03</tt>
 | BIP 32 Derivation path and Master Key fingerprint
 | The fingerprint of the master key
 | The derivation path of the public key represented as 32 bit unsigned integer indexes concatenated with each other. This must omit the index of the master key.
@@ -200,20 +200,15 @@ Each Input item is specified as follows:
 Each block of data between separators can be viewed as a scope, and all separators
 are required<ref>'''Why are all separators required?''' The separators are required
 so that the unserializer knows which input it is unserializing data for.</ref>.
-Within each scope, the type of each key-value pair must be greater
-than or equal to the pair before it<ref>'''Why must the types increase?''' The types
-must increase so that the data is unserialized in a specific order. This order allows
-for an optimization where signing can be done while simultaneously unserializing
-the PSBT</ref>. Types can be skipped when they are unnecessary.
-For example, if an input is a witness input, then it should not have a Non-Witness
-UTXO key-value pair.
+Types can be skipped when they are unnecessary. For example, if an input is a witness
+input, then it should not have a Non-Witness UTXO key-value pair.
 
 If the signer encounters key-value pairs that it does not understand, it must
 pass those key-value pairs through when re-serializing the transaction.
 
 ===Handling Duplicated Keys===
 
-Keys should never be duplicated; all keys in the format are unique. However implementors
+Keys within each scope should never be duplicated; all keys in the format are unique. However implementors
 will still need to handle events where keys are duplicated, either duplicated in the transaction
 itself or when combining transactions with duplicated fields. If duplicated keys are
 encountered, the software may choose to use any of the values corresponding to that key.
