@@ -40,7 +40,8 @@ to be able to sign transactions without access to the blockchain.
 
 ==Specification==
 
-The transaction format uses a key-value map. Each key-value pair is as follows:
+The transaction format uses a key-value map. Each key-value pair must be unique, duplicates
+are not allowed. The key-value pair format is as follows:
 
 {| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
 !Name
@@ -65,8 +66,8 @@ The transaction format uses a key-value map. Each key-value pair is as follows:
 |}
 
 The first byte of each key specifies the type of the key-value pair. Smoe types are
-for global fields and other fields are for each input. The currently
-defined global types are as follows:
+for global fields and other fields are for each input. The only required type in a
+PSBT is the transaction type, as defined below. The currently defined global types are as follows:
 
 {| class="wikitable" style="width: auto; text-align: center; font-size: smaller;
 table-layout: fixed;"
@@ -80,7 +81,8 @@ table-layout: fixed;"
 | None. The key must only contain the 1 byte type.
 | The transaction in network serialization. The scriptSigs and
 witnesses for each input must be empty unless the input is finalized. The transaction
-must be in the witness serialization format as defined in BIP 144.
+must be in the witness serialization format as defined in BIP 144. A PSBT must have
+a transaction, otherwise it is invalid.
 |-
 | <tt>0x01</tt>
 | Redeem Script
@@ -209,13 +211,65 @@ UTXO key-value pair.
 If the signer encounters key-value pairs that it does not understand, it must
 pass those key-value pairs through when re-serializing the transaction.
 
-===Extensibility
+===Handling Duplicated Keys===
+
+Keys should never be duplicated; all keys in the format are unique. However implementors
+will still need to handle events where keys are duplicated, either duplicated in the transaction
+itself or when combining transactions with duplicated fields. If duplicated keys are
+encountered, the software may choose to use any of the values corresponding to that key.
+
+==Usage==
+
+Using the transaction format involves many different roles. The roles may be combined
+into one entity, but each role has a specific set of things that it must be able to do.
+
+===Transaction Creator===
+
+The transaction creator must be able to accept a network serialized transaction and produce
+a PSBT from that transaction. For all scriptSigs which are not finalized, it must make the
+scriptSig empty and make the input fields. If it is able to, it should also look for any
+required redeemScripts and witnesScripts and add those to the global data section of the
+PSBT. The transaction creator should also fill in UTXOs that it knows about.
+
+===Transaction Updater===
+
+The transaction updater must accept a PSBT and update it with any UTXOs that it knows about.
+
+===Transaction Signer===
+
+The transaction signer must accept a PSBT. It should use the UTXOs provided in the PSBT
+to produce signatures for the inputs that it can sign for. The signer should not need
+access to the UTXO set as all necessary information is provided in the PSBT itself.
+Any and all signatures created should be added as a Partial Signature key-value pair
+to the input for which it corresponds to.
+
+===Transaction Combiner===
+
+The transaction combiner must be able to accept multiple PSBTs. It should parse each
+PSBT and merge them into one transaction if possible. If the PSBTs correspond to the
+same transaction, then the combiner should create one PSBT which contains all of the
+key-value pairs from the PSBTs. It should also handle duplicated keys and remove the
+duplication according to the specification.
+
+===Transaction Finalizer===
+
+The transaction finalizer must take a PSBT and build the finalized scriptSigs for each
+input. If an input contains enough signatures for that input to have a complete set of
+signatures, the finalizer should take those signatures, any necessary redeemScripts
+and witnessScripts, and build the complete scriptSig. The scriptSig should then be
+included in the transaction and the input should have all key-value pairs removed.
+
+===Transaction Broadcaster===
+The transaction broadcaster takes a finalized PSBT. It takes the transaction out of the
+PSBT, ensures that the transaction is valid, and broadcasts it to the Bitcoin network.
+
+==Extensibility==
 
 The Partially Signed Transaction format can be extended in the future by adding
 new types for key-value pairs. Backwards compatibilty will still be maintained as those new
 types will be ignored and passed-through by signers which do not know about them.
 
-===Compatibility===
+==Compatibility==
 
 This transaction format is designed so that it is unable to be properly unserialized
 by normal transaction unserializers. Likewise, a normal transaction will not be
