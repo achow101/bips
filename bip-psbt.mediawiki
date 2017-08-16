@@ -100,6 +100,13 @@ a transaction, otherwise it is invalid.
 | Witness Script
 | The sha256 hash of the witness script
 | A witness script that will be needed to sign a Pay-To-Witness-Script-Hash input.
+|-
+| <tt>0x03</tt>
+| BIP 32 Derivation path, public key, and Master Key fingerprint
+| The public key
+| The master key fingerprint concatenated with the derivation path of the public key. The
+  derivation path is represented as 32 bit unsigned integer indexes concatenated
+  with each other. This must omit the index of the master key.
 |}
 
 The currently defined per-input types are defined as follows:
@@ -125,11 +132,6 @@ table-layout: fixed;"
 | Partial Signature
 | The public key which corresponds to this signature.
 | The signature as would be pushed to the stack from a scriptSig or witness.
-|-
-| <tt>0x03</tt>
-| BIP 32 Derivation path and Master Key fingerprint
-| The fingerprint of the master key
-| The derivation path of the public key represented as 32 bit unsigned integer indexes concatenated with each other. This must omit the index of the master key.
 |}
 
 The transaction format is specified as follows:
