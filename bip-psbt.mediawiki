@@ -35,16 +35,20 @@ people to pass around the same transaction to sign and combine their signatures.
 format is also designed to be easily extended for future use which is harder to do
 with existing transaction formats.
 
-Signing transactions also requires users to have access to the blockchain in order
-to find the UTXOs being spent so that the transaction can be signed. This transaction
+Signing transactions also requires users to have access to the UTXOs being spent. This transaction
 format will allow offline signers such as air-gapped wallets and hardware wallets
-to be able to sign transactions without access to information about the coins being spent.
+to be able to sign transactions without needing direct access to the UTXO set and without
+risk of being defrauded.
 
 ==Specification==
 
 The Partially Signed Bitcoin Transaction (PSBT) format consists of key-value maps.
 Each key-value pair must be unique within its scope; duplicates are not allowed.
-Each map consists of a sequence of records, terminated by a `0x00` byte. The format
+Each map consists of a sequence of records, terminated by a `0x00` byte <ref>'''Why
+is the separator here <tt>0x00</tt> instead of <tt>0xff</tt>?'''
+The separator here is used to distinguish between each chunk of data. A separator of 0x00 would mean that
+the unserializer can read it as a key length of 0, which would never occur with actual keys. It can thus
+be used as a separator and allow for easier unserializer implementation.</ref>. The format
 of a record is as follows:
 
 {| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
@@ -67,6 +71,28 @@ of a record is as follows:
 | Value
 | byte[]
 | The Value itself
+|}
+
+The format of each key-value map is as follows:
+
+{| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
+!Field Size
+!Name
+!Type
+!Value
+!Description
+|-
+| 1+
+| Key-value pairs
+| Array of key-value pairs
+| varies
+| The key-value pairs.
+|-
+| 1
+| separator
+| char
+| <tt>0x00</tt>
+| Must be <tt>0x00</tt>.
 |}
 
 The first byte of each key specifies the type of the key-value pair. Some types are
@@ -105,8 +131,8 @@ a transaction, otherwise it is invalid.
 | BIP 32 Derivation path, public key, and Master Key fingerprint
 | The public key
 | The master key fingerprint concatenated with the derivation path of the public key. The
-  derivation path is represented as 32 bit unsigned integer indexes concatenated
-  with each other. This must omit the index of the master key.
+derivation path is represented as 32 bit unsigned integer indexes concatenated
+with each other. This must omit the index of the master key.
 |}
 
 The currently defined per-input types are defined as follows:
@@ -165,46 +191,15 @@ in the non-PSBT format will be able to be unserialized by a PSBT unserializer.</
 |-
 | 1+
 | Global data
-| Array of key-value pairs
+| Key-value Map
 | varies
 | The key-value pairs for all global data.
 |-
-| 1
-| separator
-| char
-| <tt>0x00</tt>
-| Must be <tt>0x00</tt> <ref>'''Why is the separator here <tt>0x00</tt> instead of <tt>0xff</tt>?'''
-The separator here is used to distinguish between each chunk of data. A separator of 0x00 would mean that
-the unserializer can read it as a key length of 0, which would never occur with actual keys. It can thus
-be used as a separator and allow for easier unserializer implementation.</ref>
-|-
 | 1+
 | Inputs
-| Array of inputs
+| Array of key-value maps
 | varies
 | The key-value pairs for each input as described below
-|}
-
-Each Input item is specified as follows:
-
-{| class="wikitable" style="width: auto; text-align: center; font-size: smaller; table-layout: fixed;"
-!Field Size
-!Name
-!Type
-!Value
-!Description
-|-
-| 1+
-| Input specific data
-| Array of key-value pairs
-| varies
-| The key-value pairs for this input.
-|-
-| 1
-| separator
-| char
-| <tt>0x00</tt>
-| Must be <tt>0x00</tt>.
 |}
 
 Each block of data between separators can be viewed as a scope, and all separators
