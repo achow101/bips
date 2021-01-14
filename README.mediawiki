@@ -853,7 +853,7 @@ Those proposing changes should consider that ultimately consent may rest with th
 | Partially Signed Bitcoin Transaction Format and Version 0
 | Andrew Chow
 | Standard
-| Proposed
+| Final
 |-
 | [[bip-0175.mediawiki|175]]
 | Applications
