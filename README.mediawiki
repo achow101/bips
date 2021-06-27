@@ -1043,6 +1043,13 @@ Those proposing changes should consider that ultimately consent may rest with th
 | Pieter Wuille, Andrew Chow
 | Informational
 | Draft
+|-
+| [[bip-descriptors-non-segwit.mediawiki|bip-descriptors-non-segwit]]
+| Applications
+| Non-Segwit Output Script Descriptors
+| Pieter Wuille, Andrew Chow
+| Informational
+| Draft
 |}
 
 <!-- IMPORTANT!  See the instructions at the top of this page, do NOT JUST add BIPs here! -->
