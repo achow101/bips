@@ -1036,6 +1036,13 @@ Those proposing changes should consider that ultimately consent may rest with th
 | Andrew Chow
 | Standard
 | Draft
+|-
+| [[bip-descriptors-general.mediawiki|bip-descriptors-general]]
+| Applications
+| Output Script Descriptors General Operation
+| Pieter Wuille, Andrew Chow
+| Informational
+| Draft
 |}
 
 <!-- IMPORTANT!  See the instructions at the top of this page, do NOT JUST add BIPs here! -->
