@@ -43,8 +43,8 @@ The new per-input types are defined as follows:
 ! Versions Requiring Exclusion
 ! Versions Allowing Inclusion
 |-
-| rowspan="2"|MuSig2 Participant Public Keys
-| rowspan="2"|<tt>PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS = 0x19</tt>
+| rowspan="2"|MuSig2 Aggregate public key
+| rowspan="2"|<tt>PSBT_IN_MUSIG2_AGGREGATE_PUBLIC_KEY = 0x19</tt>
 | <tt><33 byte plain aggregate pubkey></tt>
 | <tt><33 byte compressed pubkey>*</tt>
 | rowspan="2"|
