@@ -379,12 +379,12 @@ does not exceed the ops limit, while satisfying both does. As it's never require
 the limit does not prevent satisfaction.
 
 
-====(Non-)malleability====
+====Avoiding Malleability====
 
 The following table lists these additional properties, and the requirements for non-malleability.
-* "'''s'''" Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).
-* "'''f'''" Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG).
-* "'''e'''" Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature. 
+* "'''s'''" Signed
+* "'''f'''" Forced
+* "'''e'''" Expressive
 
 {|
 ! Miniscript
@@ -699,6 +699,9 @@ dissatisfactions can be left out of consideration.
 * "'''d'''" Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed. This implies the dissatisfaction cannot include any signature or hash preimage, and cannot rely on timelocks being satisfied.
 * "'''u'''" Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).
 * "'''k'''" No timelock mixing. This expression does not contain a mix of heightlock and timelock of the same type. If the miniscript does not have the "k" property, the miniscript template will not match the user expectation of the corresponding spending policy.
+* "'''s'''" Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).
+* "'''f'''" Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG).
+* "'''e'''" Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature. 
 
 ===Standardness Resource Limits===
 
