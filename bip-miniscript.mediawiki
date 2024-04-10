@@ -193,7 +193,9 @@ non-standard(un-relayable) transactions, consensus-invalid swaps across blockcha
 ensure that satisfaction cost can be accurately calculated. Finally, note that <code><20></code> are
 in hex representation in this document.
 
-===Type System and Correctness===
+===Type System===
+
+====Correctness====
 
 Not every Miniscript expression can be composed with every other. Some return their result by
 putting true or false on the stack; others can only abort or continue. Some require subexpressions
@@ -357,6 +359,146 @@ n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u
 | B
 | z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u
 |}
+
+====(Non-)malleability====
+
+The following table lists these additional properties, and the requirements for non-malleability.
+* "'''s'''" Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).
+* "'''f'''" Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG).
+* "'''e'''" Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature. 
+
+{|
+! Miniscript
+! Requires
+! Properties
+|-
+| <code>0</code>
+|
+| s, e
+|-
+| <code>1</code>
+|
+| f
+|-
+| <code>pk_k(key)</code>
+|
+| s, e
+|-
+| <code>pk_h(key)</code>
+|
+| s, e
+|-
+| <code>older(n)</code>
+|
+| f
+|-
+| <code>after(n)</code>
+|
+| f
+|-
+| <code>sha256(h)</code>
+|
+| 
+|-
+| <code>ripemd160(h)</code>
+|
+| 
+|-
+| <code>hash256(h)</code>
+|
+| 
+|-
+| <code>hash160(h)</code>
+|
+| 
+|-
+| <code>andor(X,Y,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)
+| s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Z</sub> and (s<sub>X</sub> or
+f<sub>Y</sub>); e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)
+|-
+| <code>and_v(X,Y)</code>
+|
+| s=s<sub>X</sub> or s<sub>Y</sub>; f=s<sub>X</sub> or f<sub>Y</sub>
+|-
+| <code>and_b(X,Y)</code>
+|
+| s=s<sub>X </sub>or s<sub>Y;</sub> f=f<sub>Xf</sub><sub>Y</sub> or s<sub>X</sub>f<sub>X</sub> or
+s<sub>Y</sub>f<sub>Y</sub>;
+e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub>
+|-
+| <code>or_b(X,Z)</code>
+| e<sub>Xe</sub><sub>Z </sub>and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; e
+|-
+| <code>or_c(X,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; f
+|-
+| <code>or_d(X,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub>
+|-
+| <code>or_i(X,Z)</code>
+| s<sub>X</sub> or s<sub>Z</sub>
+| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or
+e<sub>Z</sub>f<sub>X</sub>
+|-
+| <code>thresh(k,X_1,...,X_n)</code>
+| all are e; at most k are non-s
+| s=at most k-1 are non-s; e=all are s
+|-
+| <code>multi(k,key_1,...,key_n)</code>
+|
+| s; e
+|-
+| <code>multi_a(k,key_1,...,key_n)</code>
+|
+| s; e
+|-
+| <code>a:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>s:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>c:X</code>
+|
+| s; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>d:X</code>
+|
+| s=s<sub>X</sub>; e
+|-
+| <code>v:X</code>
+|
+| s=s<sub>X</sub>; f
+|-
+| <code>j:X</code>
+|
+| s=s<sub>X</sub>; e=f<sub>X
+|-
+| <code>n:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|}
+
+Using the malleability type properties it is possible to determine statically whether a script can
+be nonmalleably satisfied under all circumstances. In many cases it is reasonable to only accept
+such guaranteed-nonmalleable scripts, as unexpected behavior can occur when using other scripts.
+
+For example, when running the non-malleable satisfaction algorithm above, adding available
+preimages, or increasing the nLockTime/nSequence values actually may make it fail where it succeeded
+before. This is because a larger set of met conditions may mean an existing satisfaction goes from
+nonmalleable to malleable. Restricting things to scripts that are guaranteed to be satisfiable in a
+non-malleable way avoids this problem.
+
+When analysing Miniscripts for resource limits, restricting yourself to just non-malleable solutions
+(or even non-malleable scripts) also leads to tighter bounds, as all non-canonical satisfactions and
+dissatisfactions can be left out of consideration.
+
 
 ===Resource Limitations===
 
@@ -541,149 +683,6 @@ occur inside non-malleable satisfactions.
 ** If <code>andor(X,Y,Z)</code> is "d", a non-HASSIG dissatisfaction "dsat(Z) dsat(X)" must exist, and thus rules out any usage of "dsat(Y) sat(X)".
 ** If <code>and_b(X,Y)</code> is "d", a non-HASSIG dissatisfaction "dsat(Y) dsat(X)" must exist, and thus rules out any usage of "dsat(Y) sat(X)" and "sat(Y) dsat(X)". Those are also overcomplete.
 ** <code>thresh(k,...)</code> is always "d", a non-HASSIG dissatisfaction with just dissatisfactions must exist due to typing rules, and thus rules out usage of the other dissatisfactions. They are also overcomplete.
-
-===Guaranteeing Non-malleability===
-
-Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if
-it exists. But can we statically prove that such a solution always exists? In order to do that, we
-add additional properties to the type system:
-* "'''s'''" Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).
-* "'''f'''" Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG).
-* "'''e'''" Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature. 
-
-The following table lists these additional properties, and the requirements for non-malleability.
-
-{|
-! Miniscript
-! Requires
-! Properties
-|-
-| <code>0</code>
-|
-| s, e
-|-
-| <code>1</code>
-|
-| f
-|-
-| <code>pk_k(key)</code>
-|
-| s, e
-|-
-| <code>pk_h(key)</code>
-|
-| s, e
-|-
-| <code>older(n)</code>
-|
-| f
-|-
-| <code>after(n)</code>
-|
-| f
-|-
-| <code>sha256(h)</code>
-|
-| 
-|-
-| <code>ripemd160(h)</code>
-|
-| 
-|-
-| <code>hash256(h)</code>
-|
-| 
-|-
-| <code>hash160(h)</code>
-|
-| 
-|-
-| <code>andor(X,Y,Z)</code>
-| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)
-| s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Z</sub> and (s<sub>X</sub> or
-f<sub>Y</sub>); e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)
-|-
-| <code>and_v(X,Y)</code>
-|
-| s=s<sub>X</sub> or s<sub>Y</sub>; f=s<sub>X</sub> or f<sub>Y</sub>
-|-
-| <code>and_b(X,Y)</code>
-|
-| s=s<sub>X </sub>or s<sub>Y;</sub> f=f<sub>Xf</sub><sub>Y</sub> or s<sub>X</sub>f<sub>X</sub> or
-s<sub>Y</sub>f<sub>Y</sub>;
-e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub>
-|-
-| <code>or_b(X,Z)</code>
-| e<sub>Xe</sub><sub>Z </sub>and (s<sub>X</sub> or s<sub>Z</sub>)
-| s=s<sub>X</sub>s<sub>Z</sub>; e
-|-
-| <code>or_c(X,Z)</code>
-| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
-| s=s<sub>X</sub>s<sub>Z</sub>; f
-|-
-| <code>or_d(X,Z)</code>
-| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
-| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub>
-|-
-| <code>or_i(X,Z)</code>
-| s<sub>X</sub> or s<sub>Z</sub>
-| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or
-e<sub>Z</sub>f<sub>X</sub>
-|-
-| <code>thresh(k,X_1,...,X_n)</code>
-| all are e; at most k are non-s
-| s=at most k-1 are non-s; e=all are s
-|-
-| <code>multi(k,key_1,...,key_n)</code>
-|
-| s; e
-|-
-| <code>multi_a(k,key_1,...,key_n)</code>
-|
-| s; e
-|-
-| <code>a:X</code>
-|
-| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
-|-
-| <code>s:X</code>
-|
-| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
-|-
-| <code>c:X</code>
-|
-| s; f=f<sub>X</sub>; e=e<sub>X</sub>
-|-
-| <code>d:X</code>
-|
-| s=s<sub>X</sub>; e
-|-
-| <code>v:X</code>
-|
-| s=s<sub>X</sub>; f
-|-
-| <code>j:X</code>
-|
-| s=s<sub>X</sub>; e=f<sub>X
-|-
-| <code>n:X</code>
-|
-| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
-|}
-
-Using the malleability type properties it is possible to determine statically whether a script can
-be nonmalleably satisfied under all circumstances. In many cases it is reasonable to only accept
-such guaranteed-nonmalleable scripts, as unexpected behavior can occur when using other scripts.
-
-For example, when running the non-malleable satisfaction algorithm above, adding available
-preimages, or increasing the nLockTime/nSequence values actually may make it fail where it succeeded
-before. This is because a larger set of met conditions may mean an existing satisfaction goes from
-nonmalleable to malleable. Restricting things to scripts that are guaranteed to be satisfiable in a
-non-malleable way avoids this problem.
-
-When analysing Miniscripts for resource limits, restricting yourself to just non-malleable solutions
-(or even non-malleable scripts) also leads to tighter bounds, as all non-canonical satisfactions and
-dissatisfactions can be left out of consideration.
 
 ==Test Vectors==
 
