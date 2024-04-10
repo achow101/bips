@@ -17,7 +17,7 @@
 
 ==Abstract==
 
-This document specifies Miniscript, language for writing (a subset of) Bitcoin Scripts in a
+This document specifies Miniscript, a language for writing (a subset of) Bitcoin Scripts in a
 structured way, enabling analysis, composition, generic signing and more.
 
 ==Copyright==
