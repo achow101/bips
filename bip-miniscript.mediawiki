@@ -195,27 +195,28 @@ in hex representation in this document.
 
 ===Type System===
 
-====Correctness====
-
 Not every Miniscript expression can be composed with every other. Some return their result by
 putting true or false on the stack; others can only abort or continue. Some require subexpressions
 that consume an exactly known number of arguments, while others need a subexpression that has a
 nonzero top stack element to satisfy. To model all these properties, we define a correctness type
 system for Miniscript.
 
+====Correctness====
+
 Every miniscript expression has one of four basic types:
-* "'''B'''" Base expressions. These take their inputs from the top of the stack. When satisfied, they push a nonzero value of up to 4 bytes onto the stack. When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction without aborting is possible at all). This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <code><n> CHECKSEQUENCEVERIFY</code>.
-* "'''V'''" Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be dissatisfied (will abort instead). A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>. An example is <code>v:pk(key)</code> = <code><key> CHECKSIGVERIFY</code>.
-* "'''K'''" Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (CHECKSIG). An example is <code>pk_h(key)</code> = <code>DUP HASH160 <Hash160(key)> EQUALVERIFY</code>
-* "'''W'''" Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction) either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and "A B F n" or "A B n F" in case of satisfaction (with n a nonzero value). Every "W" is either <code>s:B</code> (SWAP B) or <code>a:B</code> (TOALTSTACK B FROMALTSTACK). An example is <code>s:pk(key)</code> = <code>SWAP <key> CHECKSIG</code>.
+* "'''B'''" Base expressions
+* "'''V'''" Verify expressions
+* "'''K'''" Key expressions
+* "'''W'''" Wrapped expressions
 
 Then there are 5 type modifiers, which guarantee additional properties:
-* "'''z'''" Zero-arg: this expression always consumes exactly 0 stack elements.
-* "'''o'''" One-arg: this expression always consumes exactly 1 stack element.
-* "'''n'''" Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack element to be zero.
-* "'''d'''" Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed. This implies the dissatisfaction cannot include any signature or hash preimage, and cannot rely on timelocks being satisfied.
-* "'''u'''" Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).
-* "'''k'''" No timelock mixing. This expression does not contain a mix of heightlock and timelock of the same type. If the miniscript does not have the "k" property, the miniscript template will not match the user expectation of the corresponding spending policy.
+* "'''z'''" Zero-arg
+* "'''o'''" One-arg
+* "'''n'''" Nonzero
+* "'''d'''" Dissatisfiable
+* "'''u'''" Unit
+* "'''k'''" No timelock mixing
+
 
 The following table lists the correctness requirements for each of the Miniscript expressions, and
 its type properties in function of those of their subexpressions:
@@ -684,28 +685,20 @@ When analysing Miniscripts for resource limits, restricting yourself to just non
 (or even non-malleable scripts) also leads to tighter bounds, as all non-canonical satisfactions and
 dissatisfactions can be left out of consideration.
 
-==Test Vectors==
+==Discussion==
 
-TBD
+===Where the type system comes from===
 
-==Backwards Compatibility==
-
-Miniscript's syntax is compatible with BIP 380 Output Script Descriptors, and should be considered
-an extension to it that provides a new type of Script expression that is only valid in
-<code>wsh()</code> and <code>tr()</code> contexts. As these are wholly new expressions, they are not
-compatible with any existing implementation of descriptors. Additionally, the scripts produced are
-unlikely to be standard scripts.
-
-The <code>pk()</code>, <code>pkh()</code>, <code>multi()</code>, and <code>multi_a()</code>
-fragments overlap with existing descriptors. These parse to the same semantic meanings as those
-descriptors and produce the same scripts.
-
-==Reference Implementation==
-
-Miniscript for P2WSH has been implemented in Bitcoin Core since version 25.0.
-Miniscript for Tapscript has been implemented in Bitcoin Core since version 26.0.
-
-==Appendix==
+* "'''B'''" Base expressions. These take their inputs from the top of the stack. When satisfied, they push a nonzero value of up to 4 bytes onto the stack. When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction without aborting is possible at all). This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <code><n> CHECKSEQUENCEVERIFY</code>.
+* "'''V'''" Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be dissatisfied (will abort instead). A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>. An example is <code>v:pk(key)</code> = <code><key> CHECKSIGVERIFY</code>.
+* "'''K'''" Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (CHECKSIG). An example is <code>pk_h(key)</code> = <code>DUP HASH160 <Hash160(key)> EQUALVERIFY</code>
+* "'''W'''" Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction) either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and "A B F n" or "A B n F" in case of satisfaction (with n a nonzero value). Every "W" is either <code>s:B</code> (SWAP B) or <code>a:B</code> (TOALTSTACK B FROMALTSTACK). An example is <code>s:pk(key)</code> = <code>SWAP <key> CHECKSIG</code>.
+* "'''z'''" Zero-arg: this expression always consumes exactly 0 stack elements.
+* "'''o'''" One-arg: this expression always consumes exactly 1 stack element.
+* "'''n'''" Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack element to be zero.
+* "'''d'''" Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed. This implies the dissatisfaction cannot include any signature or hash preimage, and cannot rely on timelocks being satisfied.
+* "'''u'''" Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).
+* "'''k'''" No timelock mixing. This expression does not contain a mix of heightlock and timelock of the same type. If the miniscript does not have the "k" property, the miniscript template will not match the user expectation of the corresponding spending policy.
 
 ===Standardness Resource Limits===
 
@@ -781,3 +774,24 @@ distinct from the one taken by honest users. This can happen for multiple reason
 # Two or more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.
 # The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called overcomplete solutions.
 
+
+==Test Vectors==
+
+TBD
+
+==Backwards Compatibility==
+
+Miniscript's syntax is compatible with BIP 380 Output Script Descriptors, and should be considered
+an extension to it that provides a new type of Script expression that is only valid in
+<code>wsh()</code> and <code>tr()</code> contexts. As these are wholly new expressions, they are not
+compatible with any existing implementation of descriptors. Additionally, the scripts produced are
+unlikely to be standard scripts.
+
+The <code>pk()</code>, <code>pkh()</code>, <code>multi()</code>, and <code>multi_a()</code>
+fragments overlap with existing descriptors. These parse to the same semantic meanings as those
+descriptors and produce the same scripts.
+
+==Reference Implementation==
+
+Miniscript for P2WSH has been implemented in Bitcoin Core since version 25.0.
+Miniscript for Tapscript has been implemented in Bitcoin Core since version 26.0.
