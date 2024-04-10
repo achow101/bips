@@ -1,0 +1,784 @@
+<pre>
+  BIP: miniscript
+  Layer: Applications
+  Title: Miniscript
+  Author: Pieter Wuille <pieter@wuille.net>
+	  Andrew Poelstra <andrew.poelstra@gmail.com>
+	  Sanket Kanjalkar <sanket1729@gmail.com>
+	  Antoine Poinsot <darosior@protonmail.com>
+          Ava Chow <me@achow101.com>
+  Comments-Summary: No comments yet.
+  Comments-URI: https://github.com/bitcoin/bips/wiki/Comments:BIP-miniscript
+  Status: Draft
+  Type: Informational
+  Created: 2023-10-10
+  License: BSD-2-Clause
+</pre>
+
+==Abstract==
+
+This document specifies Miniscript, language for writing (a subset of) Bitcoin Scripts in a
+structured way, enabling analysis, composition, generic signing and more.
+
+==Copyright==
+
+This BIP is licensed under the BSD 2-clause license.
+
+==Motivation==
+
+Bitcoin Script is an unusual stack-based language with many edge cases, designed for implementing
+spending conditions consisting of various combinations of signatures, hash locks, and time locks.
+Yet despite being limited in functionality it is still highly nontrivial to:
+
+* Given a combination of spending conditions, finding the most economical script to implement it.
+* Given two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" is another multisig).
+* Given a script, find out what spending conditions it permits.
+* Given a script and access to a sufficient set of private keys, construct a general satisfying witness for it.
+* Given a script, be able to predict the cost of spending an output.
+* Given a script, know whether particular resource limitations like the ops limit might be hit when
+* spending.
+
+Miniscript functions as a representation for scripts that makes these sort of operations possible.
+It has a structure that allows composition. It is very easy to statically analyze for various
+properties (spending conditions, correctness, security properties, malleability, ...). It can be
+targeted by spending policy compilers (see below). Finally, compatible scripts can easily be
+converted to Miniscript form - avoiding the need for additional metadata for e.g. signing devices
+that support it.
+
+==Specification==
+
+The Miniscript specifications vary only slightly between P2WSH and Tapscript embedded scripts.
+Differences are pointed inline. If no information specific to the context is given, you can assume
+it is valid for both P2WSH and Tapscript.
+
+===Translation Table===
+
+This table shows all Miniscript ''fragments'' and their associated semantics and Bitcoin Script.
+Fragments that do not change the semantics of their subexpressions are called ''wrappers''. Normal
+fragments use a "fragment(arguments,...)" notation, while wrappers are written using prefixes
+separated from other fragments by a colon. The colon is dropped between subsequent wrappers; e.g.
+<code>dv:older(144)</code> is the <code>d:</code> wrapper applied to the <code>v:</code> wrapper
+applied to the <code>older</code> fragment for 144 blocks. Note how key expressions in this table
+and the followings are implicitly 32 bytes "x-only" public key in Tapscript and 33 bytes compressed
+public keys in P2WSH.
+
+{|
+! Semantics
+! Miniscript Fragment
+! Bitcoin Script
+|-
+| false
+| <code>0</code>
+| <code>0</code>
+|-
+| true
+| <code>1</code>
+| <code>1</code>
+|-
+| rowspan="4" | check(key)
+| <code>pk_k(key)</code>
+| <code><key></code>
+|-
+| <code>pk_h(key)</code>
+| <code>DUP HASH160 <HASH160(key)> EQUALVERIFY</code>
+|-
+| <code>pk(key)</code> = <code>c:pk_k(key)</code>
+| <code><key> CHECKSIG</code>
+|-
+| <code>pkh(key)</code> = <code>c:pk_h(key)</code>
+| <code>DUP HASH160 <HASH160(key)> EQUALVERIFY CHECKSIG</code>
+|-
+| nSequence ≥ n (and compatible)
+| <code>older(n)</code>
+| <code><n> CHECKSEQUENCEVERIFY</code>
+|-
+| nLockTime ≥ n (and compatible)
+| <code>after(n)</code>
+| <code><n> CHECKLOCKTIMEVERIFY</code>
+|-
+| len(x) = 32 and SHA256(x) = h
+| <code>sha256(h)</code>
+| <code>SIZE <20> EQUALVERIFY SHA256 <h> EQUAL</code>
+|-
+| len(x) = 32 and HASH256(x) = h
+| <code>hash256(h)</code>
+| <code>SIZE <20> EQUALVERIFY HASH256 <h> EQUAL</code>
+|-
+| len(x) = 32 and RIPEMD160(x) = h
+| <code>ripemd160(h)</code>
+| <code>SIZE <20> EQUALVERIFY RIPEMD160 <h> EQUAL</code>
+|-
+| len(x) = 32 and HASH160(x) = h
+| <code>hash160(h)</code>
+| <code>SIZE <20> EQUALVERIFY HASH160 <h> EQUAL</code>
+|-
+| (X and Y) or Z
+| <code>andor(X,Y,Z)</code>
+| <code>[X] NOTIF [Z] ELSE [Y] ENDIF</code>
+|-
+| rowspan="3" | X and Y
+| <code>and_v(X,Y)</code>
+| <code>[X] [Y]</code>
+|-
+| <code>and_b(X,Y)</code>
+| <code>[X] [Y] BOOLAND</code>
+|-
+| <code>and_n(X,Y)</code> = <code>andor(X,Y,0)</code>
+| <code>[X] NOTIF 0 ELSE [Y] ENDIF</code>
+|-
+| rowspan="4" | X or Z
+| <code>or_b(X,Z)</code>
+| <code>[X] [Z] BOOLOR</code>
+|-
+| <code>or_c(X,Z)</code>
+| <code>[X] NOTIF [Z] ENDIF</code>
+|-
+| <code>or_d(X,Z)</code>
+| <code>[X] IFDUP NOTIF [Z] ENDIF</code>
+|-
+| <code>or_i(X,Z)</code>
+| <code>IF [X] ELSE [Z] ENDIF</code>
+|-
+| X_1 + ... + X_n = k
+| <code>thresh(k,X_1,...,X_n)</code>
+| <code>[X_1] [X_2] ADD ... [X_n] ADD ... <k> EQUAL</code>
+|-
+| check(key_1) + ... + check(key_n) = k ''(P2WSH only)''
+| <code>multi(k,key_1,...,key_n)</code>
+| <code><k> <key_1> ... <key_n> <n> CHECKMULTISIG</code>
+|-
+| check(key_1) + ... + check(key_n) = k ''(Tapscript only)''
+| <code>multi_a(k,key_1,...,key_n)</code>
+| <code><key_1> CHECKSIG <key<sub<2> CHECKSIGADD ... <key_n> CHECKSIGADD <k> NUMEQUAL</code>
+|-
+| rowspan="10" | X (identities)
+| <code>a:X</code>
+| <code>TOALTSTACK [X] FROMALTSTACK</code>
+|-
+| <code>s:X</code>
+| <code>SWAP [X]</code>
+|-
+| <code>c:X</code>
+| <code>[X] CHECKSIG</code>
+|-
+| <code>t:X</code> = <code>and_v(X,1)</code>
+| <code>[X] 1</code>
+|-
+| <code>d:X</code>
+| <code>DUP IF [X] ENDIF</code>
+|-
+| <code>v:X</code>
+| <code>[X] VERIFY (or VERIFY version of last opcode in [X])</code>
+|-
+| <code>j:X</code>
+| <code>SIZE 0NOTEQUAL IF [X] ENDIF</code>
+|-
+| <code>n:X</code>
+| <code>[X] 0NOTEQUAL</code>
+|-
+| <code>l:X</code> = <code>or_i(0,X)</code>
+| <code>IF 0 ELSE [X] ENDIF</code>
+|-
+| <code>u:X</code> = <code>or_i(X,0)</code>
+| <code>IF [X] ELSE 0 ENDIF</code>
+|}
+
+The <code>pk</code>, <code>pkh</code>, and <code>and_n</code> fragments and <code>t:</code>,
+<code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed
+in the table above. In what follows, they will not be included anymore, as their properties can be
+derived by looking at their expansion. 
+
+Hash preimages are constrained to 32 bytes to disallow various forms of griefing, including making
+non-standard(un-relayable) transactions, consensus-invalid swaps across blockchains, as well as
+ensure that satisfaction cost can be accurately calculated. Finally, note that <code><20></code> are
+in hex representation in this document.
+
+===Type System and Correctness===
+
+Not every Miniscript expression can be composed with every other. Some return their result by
+putting true or false on the stack; others can only abort or continue. Some require subexpressions
+that consume an exactly known number of arguments, while others need a subexpression that has a
+nonzero top stack element to satisfy. To model all these properties, we define a correctness type
+system for Miniscript.
+
+Every miniscript expression has one of four basic types:
+* "'''B'''" Base expressions. These take their inputs from the top of the stack. When satisfied, they push a nonzero value of up to 4 bytes onto the stack. When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction without aborting is possible at all). This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <code><n> CHECKSEQUENCEVERIFY</code>.
+* "'''V'''" Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be dissatisfied (will abort instead). A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>. An example is <code>v:pk(key)</code> = <code><key> CHECKSIGVERIFY</code>.
+* "'''K'''" Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (CHECKSIG). An example is <code>pk_h(key)</code> = <code>DUP HASH160 <Hash160(key)> EQUALVERIFY</code>
+* "'''W'''" Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction) either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and "A B F n" or "A B n F" in case of satisfaction (with n a nonzero value). Every "W" is either <code>s:B</code> (SWAP B) or <code>a:B</code> (TOALTSTACK B FROMALTSTACK). An example is <code>s:pk(key)</code> = <code>SWAP <key> CHECKSIG</code>.
+
+Then there are 5 type modifiers, which guarantee additional properties:
+* "'''z'''" Zero-arg: this expression always consumes exactly 0 stack elements.
+* "'''o'''" One-arg: this expression always consumes exactly 1 stack element.
+* "'''n'''" Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack element to be zero.
+* "'''d'''" Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed. This implies the dissatisfaction cannot include any signature or hash preimage, and cannot rely on timelocks being satisfied.
+* "'''u'''" Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).
+* "'''k'''" No timelock mixing. This expression does not contain a mix of heightlock and timelock of the same type. If the miniscript does not have the "k" property, the miniscript template will not match the user expectation of the corresponding spending policy.
+
+The following table lists the correctness requirements for each of the Miniscript expressions, and
+its type properties in function of those of their subexpressions:
+
+{|
+! Miniscript
+! Requires
+! Type
+! Properties
+|-
+| <code>0</code>
+|
+| B
+| z; u; d
+|-
+| <code>1</code>
+|
+| B
+| z; u
+|-
+| <code>pk_k(key)</code>
+|
+| K
+| o; n; d; u
+|-
+| <code>pk_h(key)</code>
+|
+| K
+| n; d; u
+|-
+| <code>older(n)</code>, <code>after(n)</code>
+| 1 &le; n &lt; 2<sup>31</sup>
+| B
+| z
+|-
+| <code>sha256(h)</code>
+|
+| B
+| o; n; d; u
+|-
+| <code>ripemd160(h)</code>
+|
+| B
+| o; n; d; u
+|-
+| <code>hash256(h)</code>
+|
+| B
+| o; n; d; u
+|-
+| <code>hash160(h)</code>
+|
+| B
+| o; n; d; u
+|-
+| <code>andor(X,Y,Z)</code>
+| X is Bdu; Y and Z are both B, K, or V
+| same as Y/Z
+| z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or
+o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub>
+|-
+| <code>and_v(X,Y)</code>
+| X is V; Y is B, K, or V
+| same as Y
+| z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>;
+n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; u=u<sub>Y</sub>
+|-
+| <code>and_b(X,Y)</code>
+| X is B; Y is W
+| B
+| z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>;
+n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u
+|-
+| <code>or_b(X,Z)</code>
+| X is Bd; Z is Wd
+| B
+| z=z<sub>X</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Z</sub> or z<sub>Z</sub>o<sub>X</sub>; d; u
+|-
+| <code>or_c(X,Z)</code>
+| X is Bdu; Z is V
+| V
+| z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>
+|-
+| <code>or_d(X,Z)</code>
+| X is Bdu; Z is B
+| B
+| z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub>
+|-
+| <code>or_i(X,Z)</code>
+| both are B, K, or V
+| same as X/Z
+| o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub>
+|-
+| <code>thresh(k,X_1,...,X_n)</code>
+| 1 &le; k &le; n; X<sub>1</sub> is Bdu; others are Wdu
+| B
+| z=all are z; o=all are z except one is o; d; u
+|-
+| <code>multi(k,key_1,...,key_n)</code>
+| 1 &le; k &le; n
+| B
+| n; d; u
+|-
+| <code>multi_a(k,key_1,...,key_n)</code>
+| 1 &le; k &le; n
+| B
+| d; u
+|-
+| <code>a:X</code>
+| X is B
+| W
+| d=d<sub>X</sub>; u=u<sub>X</sub>
+|-
+| <code>s:X</code>
+| X is Bo
+| W
+| d=d<sub>X</sub>; u=u<sub>X</sub>
+|-
+| <code>c:X</code>
+| X is K
+| B
+| o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u
+|-
+| <code>d:X</code>
+| X is Vz
+| B
+| o; n; d; ''(Tapscript only)'' u
+|-
+| <code>v:X</code>
+| X is B
+| V
+| z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>
+|-
+| <code>j:X</code>
+| X is Bn
+| B
+| o=o<sub>X</sub>; n; d; u=u<sub>X</sub>
+|-
+| <code>n:X</code>
+| X is B
+| B
+| z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u
+|}
+
+===Resource Limitations===
+
+Various types of Bitcoin Scripts have different resource limitations, either through consensus or
+standardness. We are primarily concerned with consensus limits as scripts that violate these will be invalid:
+* Scripts over 10000 bytes are invalid (bare, P2SH, P2WSH, P2SH-P2WSH). In Tapscript scripts are only implicitly bounded by the maximum size of a block (of 1 Million virtual bytes), which makes the maximum script size a bit less than 4000000 bytes.
+* Scripts over 520 bytes are invalid (P2SH).
+* Script satisfactions where the total number of non-push opcodes plus the number of keys participating in all executed multis, is above 201, are invalid (bare, P2SH, P2WSH, P2SH-P2WSH).
+* Script satisfactions that make the stack exceed 1000 elements during or before script execution are invalid (bare, P2SH, P2WSH, P2SH-P2WSH, Tapscript).
+
+For P2WSH, a Miniscript whose script is larger than 3600 bytes is invalid. For all the other limits,
+Miniscript makes it easy to verify they don't impact the ability to satisfy a script. Note that this
+is different from verifying whether the limits are never reachable at all (which is also possible).
+Consider for example an <code>or_b(X,Y)</code> where both X and Y require a number of large
+<code>multi</code>s to be executed to satisfy. It may be the case that satisfying just one of X or Y
+does not exceed the ops limit, while satisfying both does. As it's never required to satisfy both,
+the limit does not prevent satisfaction.
+
+===Satisfaction===
+
+The following table shows all valid satisfactions and dissatisfactions for every Miniscript, using
+satisfactions and dissatisfactions of its subexpressions. Multiple possibilities are separated by
+semicolons. Some options are not actually necessary to produce correct witnesses, and are called
+''non-canonical'' options. They are listed for completeness, but <s>[struckthrough]</s>. The
+fragments where a satisfaction or dissatisfaction does not exist will contain ''(none)''. The
+fragments where the satisfaction or dissatisfaction is to provide no data will contain ''(empty)''.
+
+{|
+! Miniscript
+! Dissatisfactions (dsat)
+! Satisfactions (sat)
+|-
+| <code>0</code>
+| ''(empty)''
+| ''(none)''
+|-
+| <code>1</code>
+| ''(none)''
+| ''(empty)''
+|-
+| <code>pk_k(key)</code>
+| 0
+| sig
+|-
+| <code>pk_h(key)</code>
+| 0 key
+| sig key
+|-
+| <code>older(n)</code>
+| ''(none)''
+| ''(empty)''
+|-
+| <code>after(n)</code>
+| ''(none)''
+| ''(empty)''
+|-
+| <code>sha256(h)</code>
+| any 32-byte vector except the preimage
+| preimage
+|-
+| <code>ripemd160(h)</code>
+| any 32-byte vector except the preimage
+| preimage
+|-
+| <code>hash256(h)</code>
+| any 32-byte vector except the preimage
+| preimage
+|-
+| <code>hash160(h)</code>
+| any 32-byte vector except the preimage
+| preimage
+|-
+| <code>andor(X,Y,Z)</code>
+| dsat(Z) dsat(X); <s>[dsat(Y) sat(X)]</s>
+| sat(Y) sat(X); sat(Z) dsat(X)
+|-
+| <code>and_v(X,Y)</code>
+| ''(none)''; <s>[dsat(Y) sat(X)]</s>
+| sat(Y) sat(X)
+|-
+| <code>and_b(X,Y)</code>
+| dsat(Y) dsat(X); <s>[sat(Y) dsat(X)]; [dsat(Y) sat(X)]</s>
+| sat(Y) sat(X)
+|-
+| <code>or_b(X,Z)</code>
+| dsat(Z) dsat(X)
+| dsat(Z) sat(X); sat(Z) dsat(X); <s>[sat(Z) sat(X)]</s>
+|-
+| <code>or_c(X,Z)</code>
+| ''(none)''
+| sat(X); sat(Z) dsat(X)
+|-
+| <code>or_d(X,Z)</code>
+| dsat(Z) dsat(X)
+| sat(X); sat(Z) dsat(X)
+|-
+| <code>or_i(X,Z)</code>
+| dsat(X) 1; dsat(Z) 0
+| sat(X) 1; sat(Z) 0
+|-
+| <code>thresh(k,X_1,...,X_n)</code>
+| All dsats; <s>[Sats/dsats with 1 &le; #(sats) &ne; k]</s>
+| Sats/dsats with #(sats) = k
+|-
+| <code>multi(k,key_1,...,key_n)</code>
+| 0 0 ... 0 (k+1 times)
+| 0 sig ... sig
+|-
+| <code>multi_a(k,key_1,...,key_n)</code>
+| 0 ... 0 (n times)
+| sig/0 with #(sig) = k and #(sigs/0) = n 
+|-
+| <code>a:X</code>
+| dsat(X)
+| sat(X)
+|-
+| <code>s:X</code>
+| dsat(X)
+| sat(X)
+|-
+| <code>c:X</code>
+| dsat(X)
+| sat(X)
+|-
+| <code>d:X</code>
+| 0
+| sat(X) 1
+|-
+| <code>v:X</code>
+| ''(none)''
+| sat(X)
+|-
+| <code>j:X</code>
+| 0; <s>[dsat(X) (if nonzero top stack)]</s>
+| sat(X)
+|-
+| <code>n:X</code>
+| dsat(X)
+| sat(X)
+|}
+
+===Non-malleable Satisfaction Algorithm===
+
+While following the table above to construct satisfactions is sufficient for meeting the
+completeness and soundness properties, it does not guarantee non-malleability.
+
+Because we assume attackers never have access to private keys, we can treat any solution that
+includes a signature as one that is unavailable to attackers. For others, the worst case is that the
+attacker has access to every solution the honest users have, but no others: for preimages this is an
+explicit assumption, while timelock availability is determined by the nLockTime and nSequence fields
+in the transaction. As long as the overall satisfaction includes at least one signature, those
+values are fixed, and timelock availability is identical for attackers and honest users.
+
+In order to produce non-malleable satisfactions we make use of a function that returns the optimal
+satisfaction and dissatisfaction for a given expression (if any exist), or a special DONTUSE value,
+together with an optional HASSIG marker that tracks whether the solution contains at least one
+signature. To implement the function:
+* Invoke the function recursively for all subexpressions, obtaining all their satisfactions/dissatisfactions.
+* Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:
+** The dissatisfactions for sha256, ripemd160, hash256, and hash160 are always malleable (reason 1), so instead use DONTUSE there.
+** The non-canonical options for and_b, or_b, and thresh are always overcomplete (reason 3), so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
+** The satisfactions for pk_k, pk_h, and multi can be marked HASSIG.
+** When constructing solutions by combining results for subexpressions, the result is DONTUSE if any of the constituent results is DONTUSE. Furthermore, the result gets the HASSIG tag if any of the constituents do.
+* If among all valid solutions (including DONTUSE ones) more than one does not have the HASSIG marker, return DONTUSE, as this is malleable because of reason 1.
+* If instead exactly one does not have the HASSIG marker, return that solution because of reason 2.
+* If all valid solutions have the HASSIG marker, but all of them are DONTUSE, return DONTUSE-HASSIG. The HASSIG marker is important because while this represents a choice between multiple options that would cause malleability if used, they are not available to the attacker, and we may be able to avoid them entirely still.
+* Otherwise, all not-DONTUSE options are valid, so return the smallest one (in terms of witness size).
+
+To produce an overall satisfaction, invoke the function on the toplevel expression. If no valid
+satisfaction is returned, or it is DONTUSE, fail. Otherwise, if any timelocking is used in the
+script but the result does not have the HASSIG flag, also fail, as this represents a situation where
+an attacker could change the nLockTime or nSequence values to meet additional timelock conditions.
+Not to mention that solutions without signatures are generally insecure. If the satisfaction is both
+not DONTUSE and HASSIG, return it.
+
+The above can be used to show that no non-canonical solutions listed in the satisfaction table can
+occur inside non-malleable satisfactions.
+* Some of the non-canonical options (the <code>or_b</code>, <code>and_b</code>, and <code>thresh</code> ones) are overcomplete, and thus can clearly not appear in non-malleable satisfactions.
+* The fact that non-"d" expressions cannot be dissatisfied in valid witnesses rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.
+*"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIG solutions must be preferred over HASSIG ones (reason 2), and when multiple non-HASSIG ones exist, none can be used (reason 1). This lets us rule out the other non-canonical options in the table:
+** <code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(X)".
+** If <code>andor(X,Y,Z)</code> is "d", a non-HASSIG dissatisfaction "dsat(Z) dsat(X)" must exist, and thus rules out any usage of "dsat(Y) sat(X)".
+** If <code>and_b(X,Y)</code> is "d", a non-HASSIG dissatisfaction "dsat(Y) dsat(X)" must exist, and thus rules out any usage of "dsat(Y) sat(X)" and "sat(Y) dsat(X)". Those are also overcomplete.
+** <code>thresh(k,...)</code> is always "d", a non-HASSIG dissatisfaction with just dissatisfactions must exist due to typing rules, and thus rules out usage of the other dissatisfactions. They are also overcomplete.
+
+===Guaranteeing Non-malleability===
+
+Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if
+it exists. But can we statically prove that such a solution always exists? In order to do that, we
+add additional properties to the type system:
+* "'''s'''" Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).
+* "'''f'''" Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG).
+* "'''e'''" Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature. 
+
+The following table lists these additional properties, and the requirements for non-malleability.
+
+{|
+! Miniscript
+! Requires
+! Properties
+|-
+| <code>0</code>
+|
+| s, e
+|-
+| <code>1</code>
+|
+| f
+|-
+| <code>pk_k(key)</code>
+|
+| s, e
+|-
+| <code>pk_h(key)</code>
+|
+| s, e
+|-
+| <code>older(n)</code>
+|
+| f
+|-
+| <code>after(n)</code>
+|
+| f
+|-
+| <code>sha256(h)</code>
+|
+| 
+|-
+| <code>ripemd160(h)</code>
+|
+| 
+|-
+| <code>hash256(h)</code>
+|
+| 
+|-
+| <code>hash160(h)</code>
+|
+| 
+|-
+| <code>andor(X,Y,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)
+| s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Z</sub> and (s<sub>X</sub> or
+f<sub>Y</sub>); e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)
+|-
+| <code>and_v(X,Y)</code>
+|
+| s=s<sub>X</sub> or s<sub>Y</sub>; f=s<sub>X</sub> or f<sub>Y</sub>
+|-
+| <code>and_b(X,Y)</code>
+|
+| s=s<sub>X </sub>or s<sub>Y;</sub> f=f<sub>Xf</sub><sub>Y</sub> or s<sub>X</sub>f<sub>X</sub> or
+s<sub>Y</sub>f<sub>Y</sub>;
+e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub>
+|-
+| <code>or_b(X,Z)</code>
+| e<sub>Xe</sub><sub>Z </sub>and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; e
+|-
+| <code>or_c(X,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; f
+|-
+| <code>or_d(X,Z)</code>
+| e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)
+| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub>
+|-
+| <code>or_i(X,Z)</code>
+| s<sub>X</sub> or s<sub>Z</sub>
+| s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or
+e<sub>Z</sub>f<sub>X</sub>
+|-
+| <code>thresh(k,X_1,...,X_n)</code>
+| all are e; at most k are non-s
+| s=at most k-1 are non-s; e=all are s
+|-
+| <code>multi(k,key_1,...,key_n)</code>
+|
+| s; e
+|-
+| <code>multi_a(k,key_1,...,key_n)</code>
+|
+| s; e
+|-
+| <code>a:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>s:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>c:X</code>
+|
+| s; f=f<sub>X</sub>; e=e<sub>X</sub>
+|-
+| <code>d:X</code>
+|
+| s=s<sub>X</sub>; e
+|-
+| <code>v:X</code>
+|
+| s=s<sub>X</sub>; f
+|-
+| <code>j:X</code>
+|
+| s=s<sub>X</sub>; e=f<sub>X
+|-
+| <code>n:X</code>
+|
+| s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub>
+|}
+
+Using the malleability type properties it is possible to determine statically whether a script can
+be nonmalleably satisfied under all circumstances. In many cases it is reasonable to only accept
+such guaranteed-nonmalleable scripts, as unexpected behavior can occur when using other scripts.
+
+For example, when running the non-malleable satisfaction algorithm above, adding available
+preimages, or increasing the nLockTime/nSequence values actually may make it fail where it succeeded
+before. This is because a larger set of met conditions may mean an existing satisfaction goes from
+nonmalleable to malleable. Restricting things to scripts that are guaranteed to be satisfiable in a
+non-malleable way avoids this problem.
+
+When analysing Miniscripts for resource limits, restricting yourself to just non-malleable solutions
+(or even non-malleable scripts) also leads to tighter bounds, as all non-canonical satisfactions and
+dissatisfactions can be left out of consideration.
+
+==Test Vectors==
+
+TBD
+
+==Backwards Compatibility==
+
+Miniscript's syntax is compatible with BIP 380 Output Script Descriptors, and should be considered
+an extension to it that provides a new type of Script expression that is only valid in
+<code>wsh()</code> and <code>tr()</code> contexts. As these are wholly new expressions, they are not
+compatible with any existing implementation of descriptors. Additionally, the scripts produced are
+unlikely to be standard scripts.
+
+The <code>pk()</code>, <code>pkh()</code>, <code>multi()</code>, and <code>multi_a()</code>
+fragments overlap with existing descriptors. These parse to the same semantic meanings as those
+descriptors and produce the same scripts.
+
+==Reference Implementation==
+
+Miniscript for P2WSH has been implemented in Bitcoin Core since version 25.0.
+Miniscript for Tapscript has been implemented in Bitcoin Core since version 26.0.
+
+==Appendix==
+
+===Standardness Resource Limits===
+
+* Anything but pk(key) (P2PK), pkh(key) (P2PKH), and multi(k,...) up to n=3 is invalid by standardness (bare).
+* Scripts over 3600 bytes are invalid by standardness (P2WSH, P2SH-P2WSH).
+* Script satisfactions with a serialized scriptSig over 1650 bytes are invalid by standardness (P2SH).
+* Script satisfactions with a witness consisting of over 100 stack elements (excluding the script itself) are invalid by standardness (P2WSH, P2SH-P2WSH).
+
+===Correctness Properties Correctness===
+
+The correctness properties table are based on the availability of satisfactions
+and dissatisfactions listed above. The requirements include a "d" for every subexpression whose
+dissatisfaction may be needed in building a satisfaction for the parent expression. The "d"
+properties themselves rely on the "d" properties of subexpressions. An interesting property is that
+in a well-typed Miniscript, dissatisfying a non-"d" subexpression always causes the overall script
+to fail, propagating the failure upwards to a point where it either causes the script to abort, or
+reach the top level.
+
+A conservative simplification is made here, ignoring the existence of always-true expressions like
+<code>1</code>. This makes the typing rules incorrect in the following cases:
+* <code>or_b(X,1)</code> and <code>or_b(1,X)</code> are complete when X is dissatisfiable ("d"). In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "dsat(X)" exists.
+* <code>or_b(1,1)</code> is complete, as it is equivalent to 1 and ''(empty)'' is a valid satisfaction.
+* <code>and_b(X,1)</code> and <code>and_b(1,X)</code> are dissatisfiable ("d") when ''X'' is.
+* <code>andor(1,1,Z)</code> is complete, as it is equivalent to 1 and ''(empty)'' is a valid satisfaction.
+* <code>andor(1,Y,0)</code> is complete when ''Y'' is; it also has the same type as ''Y'', despite <code>0</code> always being a "B". This is also dissatisfiable when Y is.
+* The <code>1</code>s items listed above can be replaced with any other always-true expression. 
+
+Since all these cases of inaccurate typing involve always-true expressions that can be avoided using
+strictly simpler/smaller Miniscripts, we don't consider this to be a serious restriction. For
+Miniscripts excluding always-true expressions (except in the <code>and_v(X,1)</code> code), the
+typing rules match the definitions above.
+
+===Security Properties===
+
+The type system guarantees that the corresponding Bitcoin Scripts are:
+* '''consensus and standardness complete''': Assuming the resource limits listed in the previous section are not violated and there is no timelock mixing, for every set of met conditions that are permitted by the semantics, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.
+* '''consensus sound''': It is not possible to construct a witness that is consensus valid for a Script unless the spending conditions are met. Since standardness rules permit only a subset of consensus-valid satisfactions (by definition), this property also implies '''standardness soundness'''. 
+
+The completeness property has been extensively tested for P2WSH by verifying large numbers of random
+satisfactions for random Miniscript expressions against Bitcoin Core's consensus and standardness
+implementation. The soundness can be reasoned about by considering all possible execution paths
+through each of the fragments' scripts.
+
+In order for these properties to not just apply to script, but to an entire transaction, it's
+important that the witness commits to all data relevant for verification. In practice this means
+that scripts whose conditions can be met without any digital signature are insecure. For example, if
+an output can be spent by simply passing a certain nLockTime (an after(n) fragment in Miniscript)
+but without any digital signatures, an attacker can modify the nLockTime field in the spending
+transaction.
+
+===Satisfaction Malleability===
+
+Malleability is the ability for a third party (not a participant in the script) to modify an
+existing satisfaction into another valid satisfaction. Since Segwit, malleating a transaction no
+longer breaks the validity of unconfirmed descendant transactions. However, unintentional
+malleability may still have a number of much weaker undesirable effects. If a witness can be stuffed
+with additional data, the transaction's feerate will go down, potentially to the point where its
+ability to propagate and get confirmed is impacted. Additionally, malleability can be exploited to
+add roundtrips to BIP152 block propagation, by trying to get different miners to mine different
+versions of the same transaction. Finally, malleability may interfere with the usage of hash locks
+as a mechanism for publishing preimages.
+
+Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this
+guarantee is restricted in non-obvious ways, let's first state the assumptions:
+* The attacker does not have access to any of the private keys of public keys that participate in the Script. Participants with private keys inherently have the ability to produce different satisfactions by creating multiple signatures. While it is also interesting to study the impact rogue participants can have, we treat it as a distinct problem.
+* The attacker only has access to hash preimages that honest users have access to as well. This is a reasonable assumption because hash preimages are revealed once globally, and then available to everyone. On the other hand, making the assumption that attackers may have access to more preimages than honest users makes a large portion of scripts impossible to satisfy in a non-malleable way.
+* The attacker gets to see exactly one satisfying witness of any transaction. If he sees multiple, it becomes possible for the attacker to mix and match different satisfactions. This is very hard to reason about.
+* We restrict this analysis to scripts where no public key is repeated. If signatures constructed for one part of the script can be bound to other checks in the same script, a variant of the mixing from the previous point becomes available that is equally hard to reason about. Furthermore this situation can be avoided by using separate keys.
+
+Malleable satisfactions or dissatisfactions appear whenever options are available to attackers
+distinct from the one taken by honest users. This can happen for multiple reasons:
+# Two or more options for a satisfaction or dissatisfaction are listed in the table above which are both available to attackers directly. Regardless of which option is used in the honest solution, the attacker can change the solution to the other one.
+# Two or more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.
+# The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called overcomplete solutions.
+
